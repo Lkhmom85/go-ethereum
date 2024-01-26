@@ -207,7 +207,7 @@ func (s *StateDB) Error() error {
 }
 
 func (s *StateDB) AddLog(log *types.Log) {
-	s.journal.append(addLogChange{txhash: s.thash})
+	s.journal.JournalLog(s.thash)
 
 	log.TxHash = s.thash
 	log.TxIndex = uint(s.txIndex)
@@ -238,7 +238,7 @@ func (s *StateDB) Logs() []*types.Log {
 // AddPreimage records a SHA3 preimage seen by the VM.
 func (s *StateDB) AddPreimage(hash common.Hash, preimage []byte) {
 	if _, ok := s.preimages[hash]; !ok {
-		s.journal.append(addPreimageChange{hash: hash})
+		s.journal.JournalAddPreimage(hash)
 		pi := make([]byte, len(preimage))
 		copy(pi, preimage)
 		s.preimages[hash] = pi
@@ -252,14 +252,14 @@ func (s *StateDB) Preimages() map[common.Hash][]byte {
 
 // AddRefund adds gas to the refund counter
 func (s *StateDB) AddRefund(gas uint64) {
-	s.journal.append(refundChange{prev: s.refund})
+	s.journal.JournalRefund(s.refund)
 	s.refund += gas
 }
 
 // SubRefund removes gas from the refund counter.
 // This method will panic if the refund counter goes below zero
 func (s *StateDB) SubRefund(gas uint64) {
-	s.journal.append(refundChange{prev: s.refund})
+	s.journal.JournalRefundChange(s.refund)
 	if gas > s.refund {
 		panic(fmt.Sprintf("Refund counter below zero (gas: %d > refund: %d)", gas, s.refund))
 	}
@@ -447,11 +447,7 @@ func (s *StateDB) SelfDestruct(addr common.Address) {
 	if stateObject == nil {
 		return
 	}
-	s.journal.append(selfDestructChange{
-		account:     &addr,
-		prev:        stateObject.selfDestructed,
-		prevbalance: new(uint256.Int).Set(stateObject.Balance()),
-	})
+	s.journal.JournalDestruct(addr, stateObject.selfDestructed, stateObject.Balance())
 	stateObject.markSelfdestructed()
 	stateObject.data.Balance = new(uint256.Int)
 }
@@ -475,11 +471,7 @@ func (s *StateDB) SetTransientState(addr common.Address, key, value common.Hash)
 	if prev == value {
 		return
 	}
-	s.journal.append(transientStorageChange{
-		account:  &addr,
-		key:      key,
-		prevalue: prev,
-	})
+	s.journal.JournalSetTransientState(addr, key, prev)
 	s.setTransientState(addr, key, value)
 }
 
@@ -629,7 +621,7 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) 
 	prev = s.getDeletedStateObject(addr) // Note, prev might have been deleted, we need that!
 	newobj = newObject(s, addr, nil)
 	if prev == nil {
-		s.journal.append(createObjectChange{account: &addr})
+		s.journal.JournalCreate(addr)
 	} else {
 		// The original account should be marked as destructed and all cached
 		// account and storage data should be cleared as well. Note, it must
@@ -643,16 +635,10 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) 
 		// will be called for each transaction before byzantium fork which will always
 		// cache the latest account/storage data.
 		prevAccount, ok := s.accountsOrigin[prev.address]
-		s.journal.append(resetObjectChange{
-			account:                &addr,
-			prev:                   prev,
-			prevdestruct:           prevdestruct,
-			prevAccount:            s.accounts[prev.addrHash],
-			prevStorage:            s.storages[prev.addrHash],
-			prevAccountOriginExist: ok,
-			prevAccountOrigin:      prevAccount,
-			prevStorageOrigin:      s.storagesOrigin[prev.address],
-		})
+		s.journal.JournalReset(addr, prev, prevdestruct,
+			s.accounts[prev.addrHash], s.storages[prev.addrHash], ok,
+			prevAccount, s.storagesOrigin[prev.address])
+
 		delete(s.accounts, prev.addrHash)
 		delete(s.storages, prev.addrHash)
 		delete(s.accountsOrigin, prev.address)
@@ -1342,7 +1328,7 @@ func (s *StateDB) Prepare(rules params.Rules, sender, coinbase common.Address, d
 // AddAddressToAccessList adds the given address to the access list
 func (s *StateDB) AddAddressToAccessList(addr common.Address) {
 	if s.accessList.AddAddress(addr) {
-		s.journal.append(accessListAddAccountChange{&addr})
+		s.journal.JournalAccessListAddAccount(addr)
 	}
 }
 
@@ -1354,13 +1340,10 @@ func (s *StateDB) AddSlotToAccessList(addr common.Address, slot common.Hash) {
 		// scope of 'address' without having the 'address' become already added
 		// to the access list (via call-variant, create, etc).
 		// Better safe than sorry, though
-		s.journal.append(accessListAddAccountChange{&addr})
+		s.journal.JournalAccessListAddAccount(addr)
 	}
 	if slotMod {
-		s.journal.append(accessListAddSlotChange{
-			address: &addr,
-			slot:    &slot,
-		})
+		s.journal.JournalAccessListAddSlot(addr, slot)
 	}
 }
 
