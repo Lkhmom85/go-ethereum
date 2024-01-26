@@ -18,17 +18,11 @@ package state
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 )
-
-type revision struct {
-	id           int
-	journalIndex int
-}
 
 // journalEntry is a modification entry in the state change journal that can be
 // reverted on demand.
@@ -47,8 +41,8 @@ type journal struct {
 	entries []journalEntry         // Current changes tracked by the journal
 	dirties map[common.Address]int // Dirty accounts and the number of changes
 
-	validRevisions []revision
-	nextRevisionId int
+	// snapshots is a list of the indexes to revert to
+	snapshots []int
 }
 
 // newJournal creates a new initialized journal.
@@ -63,33 +57,27 @@ func newJournal() *journal {
 // slices can be reused
 func (j *journal) Reset() {
 	j.entries = j.entries[:0]
-	j.validRevisions = j.validRevisions[:0]
+	j.snapshots = j.snapshots[:0]
 	j.dirties = make(map[common.Address]int)
-	j.nextRevisionId = 0
 }
 
 // Snapshot returns an identifier for the current revision of the state.
 func (j *journal) Snapshot() int {
-	id := j.nextRevisionId
-	j.nextRevisionId++
-	j.validRevisions = append(j.validRevisions, revision{id, j.length()})
+	id := len(j.snapshots)
+	j.snapshots = append(j.snapshots, j.length())
 	return id
 }
 
 // RevertToSnapshot reverts all state changes made since the given revision.
-func (j *journal) RevertToSnapshot(revid int, s *StateDB) {
-	// Find the snapshot in the stack of valid snapshots.
-	idx := sort.Search(len(j.validRevisions), func(i int) bool {
-		return j.validRevisions[i].id >= revid
-	})
-	if idx == len(j.validRevisions) || j.validRevisions[idx].id != revid {
-		panic(fmt.Errorf("revision id %v cannot be reverted", revid))
+func (j *journal) RevertToSnapshot(id int, s *StateDB) {
+	if id >= len(j.snapshots) {
+		panic(fmt.Errorf("revision id %v cannot be reverted", id))
 	}
-	snapshot := j.validRevisions[idx].journalIndex
+	snapshot := j.snapshots[id]
 
 	// Replay the journal to undo changes and remove invalidated snapshots
 	j.revert(s, snapshot)
-	j.validRevisions = j.validRevisions[:idx]
+	j.snapshots = j.snapshots[:id]
 }
 
 // append inserts a new modification entry to the end of the change journal.
