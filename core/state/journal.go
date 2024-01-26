@@ -18,6 +18,7 @@ package state
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 )
 
@@ -145,12 +146,10 @@ func (j *journal) JournalBalanceChange(addr common.Address, previous *uint256.In
 	})
 }
 
-func (j *journal) JournalSetCode(address common.Address, prevcode, prevHash []byte) {
-	j.append(codeChange{
-		account:  &address,
-		prevhash: prevHash,
-		prevcode: prevcode,
-	})
+// JournalSetCode journals the setting of code: it is implicit that the previous
+// values were "no code" and emptyCodeHash.
+func (j *journal) JournalSetCode(address common.Address) {
+	j.append(codeChange{account: &address})
 }
 
 func (j *journal) JournalNonceChange(address common.Address, prev uint64) {
@@ -228,8 +227,7 @@ type (
 		key, prevalue common.Hash
 	}
 	codeChange struct {
-		account            *common.Address
-		prevcode, prevhash []byte
+		account *common.Address
 	}
 
 	// Changes to other state values.
@@ -330,7 +328,7 @@ func (ch nonceChange) dirtied() *common.Address {
 }
 
 func (ch codeChange) revert(s *StateDB) {
-	s.getStateObject(*ch.account).setCode(common.BytesToHash(ch.prevhash), ch.prevcode)
+	s.getStateObject(*ch.account).setCode(types.EmptyCodeHash, nil)
 }
 
 func (ch codeChange) dirtied() *common.Address {

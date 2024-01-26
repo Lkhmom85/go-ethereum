@@ -488,7 +488,7 @@ func (s *stateObject) CodeSize() int {
 }
 
 func (s *stateObject) SetCode(codeHash common.Hash, code []byte) {
-	s.db.journal.JournalSetCode(s.address, s.Code(), s.CodeHash())
+	s.db.journal.JournalSetCode(s.address)
 	s.setCode(codeHash, code)
 }
 
