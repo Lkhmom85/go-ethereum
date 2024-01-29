@@ -22,7 +22,61 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 )
+
+type Journal interface {
+	JournalCreate(addr common.Address)
+	JournalTouch(addr common.Address, account *types.StateAccount, destructed bool)
+	JournalNonceChange(addr common.Address, account *types.StateAccount, destructed bool)
+	JournalBalanceChange(addr common.Address, account *types.StateAccount, destructed bool)
+	JournalDestruct(addr common.Address, account *types.StateAccount)
+
+	// JournalSetCode journals the setting of code: it is implicit that the previous
+	// values were "no code" and emptyCodeHash and not destructed.
+	JournalSetCode(addr common.Address, account *types.StateAccount)
+
+	JournalLog(txHash common.Hash)
+	JournalAccessListAddAccount(addr common.Address)
+	JournalAccessListAddSlot(addr common.Address, slot common.Hash)
+	JournalSetState(addr common.Address, key, prev common.Hash)
+	JournalSetTransientState(addr common.Address, key, prev common.Hash)
+
+	// Snapshot returns an identifier for the current revision of the state.
+	// The lifeycle of journalling is as follows:
+	// - Snapshot() starts a 'scope'.
+	// - Tee method Snapshot() may be called any number of times.
+	// - For each call to Snapshot, there should be a corresponding call to end
+	//  the scope via either of:
+	//   - RevertToSnapshot, which undoes the changes in the scope, or
+	//   - DiscardSnapshot, which discards the ability to revert the changes in the scope.
+	//     - This operation might merge the changes into the parent scope.
+	//       If it does not merge the changes into the parent scope, it must create
+	//       a new snapshot internally, in order to ensure that order of changes
+	//       remains intact.
+	Snapshot() int
+	// RevertToSnapshot reverts all state changes made since the given revision.
+	RevertToSnapshot(id int, s *StateDB)
+	// DiscardSnapshot removes the snapshot. 	DiscardSnapshot(id int, s *StateDB)
+
+	// Reset clears the journal, after this operation the journal can be used
+	// anew. It is semantically similar to calling 'newJournal'.
+	Reset()
+}
+
+var (
+	_ Journal = (*sparseJournal)(nil)
+)
+
+// journalAccount represents the 'journable state' of a types.Account.
+// Which means, all the normal fields except storage root, but also with a
+// destruction-flag.
+type journalAccount struct {
+	nonce      uint64
+	balance    uint256.Int
+	codeHash   []byte // nil == emptyCodeHAsh
+	destructed bool
+}
 
 type addrSlot struct {
 	addr common.Address
@@ -32,7 +86,7 @@ type addrSlot struct {
 // scopedJournal represents all changes within a single callscope. These changes
 // are either all reverted, or all committed -- they cannot be partially applied.
 type scopedJournal struct {
-	accountChanges map[common.Address][]byte
+	accountChanges map[common.Address]*journalAccount
 	refund         int64
 	logs           []common.Hash
 
@@ -63,12 +117,21 @@ func (j *scopedJournal) JournalRefund(prev uint64) {
 // These changes all fall back to this method:
 // - balance change
 // - nonce change
+// - destruct-change
 // - creation change (in this case, the account is nil)
-func (j *scopedJournal) journalAccountChange(address common.Address, account *types.StateAccount) bool {
+func (j *scopedJournal) journalAccountChange(address common.Address, account *types.StateAccount, destructed bool) bool {
 	// Unless the account has already been journalled, journal it now
 	if _, ok := j.accountChanges[address]; !ok {
 		if account != nil {
-			j.accountChanges[address] = types.SlimAccountRLP(*account)
+			ja := &journalAccount{
+				nonce:   account.Nonce,
+				balance: *account.Balance,
+			}
+			j.accountChanges[address] = ja
+			if !bytes.Equal(account.CodeHash, types.EmptyCodeHash[:]) {
+				ja.codeHash = account.CodeHash
+			}
+			ja.destructed = destructed
 		} else {
 			j.accountChanges[address] = nil
 		}
@@ -131,16 +194,22 @@ func (j *scopedJournal) revert(s *StateDB, dirties map[common.Address]int) {
 			delete(s.stateObjectsDirty, addr)
 			continue
 		}
-		acc, _ := types.FullAccount(data)
 		obj := s.getStateObject(addr)
-		obj.setNonce(acc.Nonce)
+		obj.setNonce(data.nonce)
 		// Setting 'code' to nil means it will be loaded from disk
 		// next time it is needed. We avoid nilling it unless required
-		if !bytes.Equal(obj.CodeHash(), acc.CodeHash) {
-			obj.setCode(common.BytesToHash(acc.CodeHash), nil)
+		journalHash := data.codeHash
+		if data.codeHash == nil {
+			if !bytes.Equal(obj.CodeHash(), types.EmptyCodeHash[:]) {
+				obj.setCode(types.EmptyCodeHash, nil)
+			}
+		} else {
+			if !bytes.Equal(obj.CodeHash(), journalHash) {
+				obj.setCode(common.BytesToHash(data.codeHash), nil)
+			}
 		}
-		obj.setBalance(acc.Balance)
-
+		obj.setBalance(&data.balance)
+		obj.selfDestructed = data.destructed
 		if dirties[addr]--; dirties[addr] == 0 {
 			delete(dirties, addr)
 		}
@@ -236,44 +305,39 @@ func (j *sparseJournal) JournalReset(address common.Address,
 	panic("Not implemented")
 }
 
-func (j *sparseJournal) journalAccountChange(addr common.Address, account *types.StateAccount) {
-	if j.entries[len(j.entries)-1].journalAccountChange(addr, account) {
+func (j *sparseJournal) journalAccountChange(addr common.Address, account *types.StateAccount, destructed bool) {
+	if j.entries[len(j.entries)-1].journalAccountChange(addr, account, destructed) {
 		j.dirties[addr]++
 	}
 }
+
+func (j *sparseJournal) JournalNonceChange(addr common.Address, account *types.StateAccount, destructed bool) {
+	j.journalAccountChange(addr, account, destructed)
+}
+
+func (j *sparseJournal) JournalBalanceChange(addr common.Address, account *types.StateAccount, destructed bool) {
+	j.journalAccountChange(addr, account, destructed)
+}
+
+func (j *sparseJournal) JournalSetCode(addr common.Address, account *types.StateAccount) {
+	j.journalAccountChange(addr, account, false)
+}
+
 func (j *sparseJournal) JournalCreate(addr common.Address) {
-	if j.entries[len(j.entries)-1].journalAccountChange(addr, nil) {
-		j.dirties[addr]++
-	}
+	// Creating an account which is destructed, hence already exists, is not
+	// allowed, hence we know it to be 'false'.
+	j.journalAccountChange(addr, nil, false)
 }
 
-var (
-	JournalNonceChange   = (*sparseJournal).journalAccountChange
-	JournalBalanceChange = (*sparseJournal).journalAccountChange
-	JournalSetCode       = (*sparseJournal).journalAccountChange
+func (j *sparseJournal) JournalDestruct(addr common.Address, account *types.StateAccount) {
+	// destructing an already destructed account must not be journalled. Hence we
+	// know it to be 'false'.
+	j.journalAccountChange(addr, account, false)
+}
 
-	// The destruction-journal is not sufficient. Reverting a destruct-event needs
-	// too unmark 'selfDestructed'. Thus, it is not sufficient to store the
-	// types.StateAccount, perhaps we should store  different object (then we can
-	// also omit storing the storage root):
-	/*
-		type JournalAccount struct {
-			nonce      uint64
-			Balance    *uint256.Int
-			codeHash   []byte // nil == emptyCodeHAsh
-			destructed bool
-		}
-	*/
-
-	JournalDestruct = (*sparseJournal).journalAccountChange
-)
-
-//var ripemd = common.HexToAddress("0000000000000000000000000000000000000003")
-
-func (j *sparseJournal) JournalTouch(addr common.Address, account *types.StateAccount) {
-	if j.entries[len(j.entries)-1].journalAccountChange(addr, account) {
-		j.dirties[addr]++
-	}
+// var ripemd = common.HexToAddress("0000000000000000000000000000000000000003")
+func (j *sparseJournal) JournalTouch(addr common.Address, account *types.StateAccount, destructed bool) {
+	j.journalAccountChange(addr, account, destructed)
 	if addr == ripemd {
 		// Explicitly put it in the dirty-cache one extra time. Ripe magic.
 		j.dirties[addr]++
@@ -298,43 +362,4 @@ func (j *sparseJournal) JournalSetState(addr common.Address, key, prev common.Ha
 
 func (j *sparseJournal) JournalSetTransientState(addr common.Address, key, prev common.Hash) {
 	j.entries[len(j.entries)-1].journalSetTransientState(addr, key, prev)
-}
-
-type Journal interface {
-	JournalCreate(addr common.Address)
-
-	JournalTouch(addr common.Address, account *types.StateAccount)
-	JournalNonceChange(addr common.Address, account *types.StateAccount)
-	JournalBalanceChange(addr common.Address, account *types.StateAccount)
-	JournalDestruct(addr common.Address, account *types.StateAccount)
-	// JournalSetCode journals the setting of code: it is implicit that the previous
-	// values were "no code" and emptyCodeHash.
-	JournalSetCode(addr common.Address, account *types.StateAccount)
-
-	JournalLog(txHash common.Hash)
-	JournalAccessListAddAccount(addr common.Address)
-	JournalAccessListAddSlot(addr common.Address, slot common.Hash)
-	JournalSetState(addr common.Address, key, prev common.Hash)
-	JournalSetTransientState(addr common.Address, key, prev common.Hash)
-
-	// Snapshot returns an identifier for the current revision of the state.
-	// The lifeycle of journalling is as follows:
-	// - Snapshot() starts a 'scope'.
-	// - Tee method Snapshot() may be called any number of times.
-	// - For each call to Snapshot, there should be a corresponding call to end
-	//  the scope via either of:
-	//   - RevertToSnapshot, which undoes the changes in the scope, or
-	//   - DiscardSnapshot, which discards the ability to revert the changes in the scope.
-	//     - This operation might merge the changes into the parent scope.
-	//       If it does not merge the changes into the parent scope, it must create
-	//       a new snapshot internally, in order to ensure that order of changes
-	//       remains intact.
-	Snapshot() int
-	// RevertToSnapshot reverts all state changes made since the given revision.
-	RevertToSnapshot(id int, s *StateDB)
-	// DiscardSnapshot removes the snapshot. 	DiscardSnapshot(id int, s *StateDB)
-
-	// Reset clears the journal, after this operation the journal can be used
-	// anew. It is semantically similar to calling 'newJournal'.
-	Reset()
 }
