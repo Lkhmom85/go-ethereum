@@ -132,10 +132,6 @@ func (j *journal) JournalLog(txHash common.Hash) {
 	j.append(addLogChange{txhash: txHash})
 }
 
-func (j *journal) JournalAddPreimage(hash common.Hash) {
-	j.append(addPreimageChange{hash: hash})
-}
-
 func (j *journal) JournalRefund(prev uint64) {
 	j.append(refundChange{prev: prev})
 }
@@ -207,7 +203,6 @@ func (j *journal) JournalReset(address common.Address,
 	prevAccountOriginExist bool,
 	prevAccountOrigin []byte,
 	prevStorageOrigin map[common.Hash][]byte) {
-
 	j.append(resetObjectChange{
 		account:                &address,
 		prev:                   prev,
@@ -263,9 +258,6 @@ type (
 	}
 	addLogChange struct {
 		txhash common.Hash
-	}
-	addPreimageChange struct {
-		hash common.Hash
 	}
 	touchChange struct {
 		account *common.Address
@@ -396,14 +388,6 @@ func (ch addLogChange) revert(s *StateDB) {
 }
 
 func (ch addLogChange) dirtied() *common.Address {
-	return nil
-}
-
-func (ch addPreimageChange) revert(s *StateDB) {
-	delete(s.preimages, ch.hash)
-}
-
-func (ch addPreimageChange) dirtied() *common.Address {
 	return nil
 }
 

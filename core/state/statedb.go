@@ -230,7 +230,6 @@ func (s *StateDB) Logs() []*types.Log {
 // AddPreimage records a SHA3 preimage seen by the VM.
 func (s *StateDB) AddPreimage(hash common.Hash, preimage []byte) {
 	if _, ok := s.preimages[hash]; !ok {
-		s.journal.JournalAddPreimage(hash)
 		pi := make([]byte, len(preimage))
 		copy(pi, preimage)
 		s.preimages[hash] = pi
