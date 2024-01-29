@@ -144,12 +144,8 @@ func (j *journal) JournalCreate(addr common.Address) {
 	j.append(createObjectChange{account: &addr})
 }
 
-func (j *journal) JournalDestruct(addr common.Address, previouslyDestructed bool, prevBalance *uint256.Int) {
-	j.append(selfDestructChange{
-		account:     &addr,
-		prev:        previouslyDestructed,
-		prevbalance: prevBalance.Clone(),
-	})
+func (j *journal) JournalDestruct(addr common.Address) {
+	j.append(selfDestructChange{account: &addr})
 }
 
 func (j *journal) JournalSetState(addr common.Address, key, prev common.Hash) {
@@ -241,9 +237,7 @@ type (
 		prevStorageOrigin      map[common.Hash][]byte
 	}
 	selfDestructChange struct {
-		account     *common.Address
-		prev        bool // whether account had already self-destructed
-		prevbalance *uint256.Int
+		account *common.Address
 	}
 
 	// Changes to individual accounts.
@@ -326,8 +320,7 @@ func (ch resetObjectChange) dirtied() *common.Address {
 func (ch selfDestructChange) revert(s *StateDB) {
 	obj := s.getStateObject(*ch.account)
 	if obj != nil {
-		obj.selfDestructed = ch.prev
-		obj.setBalance(ch.prevbalance)
+		obj.selfDestructed = false
 	}
 }
 

@@ -439,9 +439,17 @@ func (s *StateDB) SelfDestruct(addr common.Address) {
 	if stateObject == nil {
 		return
 	}
-	s.journal.JournalDestruct(addr, stateObject.selfDestructed, stateObject.Balance())
-	stateObject.markSelfdestructed()
-	stateObject.data.Balance = new(uint256.Int)
+	// Regardless of whether it is already destructed or not, we do have to
+	// journal the balance-change, if we set it to zero here.
+	if !stateObject.Balance().IsZero() {
+		stateObject.SetBalance(new(uint256.Int))
+	}
+	// If it is already marked as self-destructed, we do not need to add it
+	// for journalling a second time.
+	if !stateObject.selfDestructed {
+		s.journal.JournalDestruct(addr)
+		stateObject.markSelfdestructed()
+	}
 }
 
 func (s *StateDB) Selfdestruct6780(addr common.Address) {
