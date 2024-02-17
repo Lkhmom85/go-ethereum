@@ -18,7 +18,6 @@ package miner
 
 import (
 	"container/heap"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -33,6 +32,7 @@ type txWithMinerFee struct {
 	fees *uint256.Int
 }
 
+/*
 // newTxWithMinerFee creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.
@@ -53,7 +53,7 @@ func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee 
 		fees: tip,
 	}, nil
 }
-
+*/
 // txByPriceAndTime implements both the sort and the heap interface, making it useful
 // for all at once sorting as well as individually adding and removing elements.
 type txByPriceAndTime []*txWithMinerFee
@@ -98,6 +98,7 @@ type transactionsByPriceAndNonce struct {
 //
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
+/*
 func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address][]*txpool.LazyTransaction, baseFee *big.Int) *transactionsByPriceAndNonce {
 	// Convert the basefee from header format to uint256 format
 	var baseFeeUint *uint256.Int
@@ -125,7 +126,6 @@ func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address]
 		baseFee: baseFeeUint,
 	}
 }
-
 // Peek returns the next transaction by price.
 func (t *transactionsByPriceAndNonce) Peek() (*txpool.LazyTransaction, *uint256.Int) {
 	if len(t.heads) == 0 {
@@ -146,6 +146,7 @@ func (t *transactionsByPriceAndNonce) Shift() {
 	}
 	heap.Pop(&t.heads)
 }
+*/
 
 // Pop removes the best transaction, *not* replacing it with the next one from
 // the same account. This should be used when a transaction cannot be executed
