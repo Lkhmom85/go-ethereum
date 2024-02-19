@@ -357,13 +357,18 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
 // The transactions can also be pre-filtered by the dynamic fee components to
 // reduce allocations and load on downstream subsystems.
 func (p *TxPool) Pending(filter PendingFilter) Pending {
-	ps := new(pendingSuperSet)
-
-	// TODO this is not nice
-	ps.legacy = p.subpools[0].Pending(filter)
-	ps.blob = p.subpools[1].Pending(filter)
-
-	return ps
+	var pending Pending
+	// This code is not quite correct, it assumes that the filter requests
+	// _either_ blobs or legacy.
+	if !filter.OnlyBlobTxs && !filter.OnlyPlainTxs {
+		panic("please request either only-blobs or only-plain")
+	}
+	for _, sub := range p.subpools {
+		if pending = sub.Pending(filter); !pending.Empty() {
+			return pending
+		}
+	}
+	return pending
 }
 
 // PendingHashes retrieves the hashes of all currently processable transactions.

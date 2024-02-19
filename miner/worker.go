@@ -590,8 +590,9 @@ func (w *worker) mainLoop() {
 					txs[acc] = append(txs[acc], lazyTx)
 				}
 				tcount := w.current.tcount
-				set := txpool.NewPendingSet(heads, txs)
-				w.commitTransactions(w.current, set, nil)
+				plainTxs := txpool.NewPendingSet(heads, txs)
+				blobTxs := txpool.NewPendingSet(nil, nil)
+				w.commitTransactions(w.current, plainTxs, blobTxs, nil)
 				// Only update the snapshot if any new transactions were added
 				// to the pending block
 				if tcount != w.current.tcount {
@@ -828,7 +829,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 	return receipt, err
 }
 
-func (w *worker) commitTransactions(env *environment, txs txpool.Pending, interrupt *atomic.Int32) error {
+func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs txpool.Pending, interrupt *atomic.Int32) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -849,13 +850,32 @@ func (w *worker) commitTransactions(env *environment, txs txpool.Pending, interr
 		}
 		// If we don't have enough blob space for any further blob transactions,
 		// skip that list altogether
-		if env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
+		if !blobTxs.Empty() && env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
 			log.Trace("Not enough blob space for further blob transactions")
-			txs.DiscardAll(types.BlobTxType)
+			blobTxs.Clear()
 			// Fall though to pick up any plain txs
 		}
 		// Retrieve the next transaction and abort if all done.
-		ltx, _ := txs.Peek()
+		var (
+			ltx *txpool.LazyTransaction
+			txs txpool.Pending
+		)
+		pltx, ptip := plainTxs.Peek()
+		bltx, btip := blobTxs.Peek()
+
+		switch {
+		case pltx == nil:
+			txs, ltx = blobTxs, bltx
+		case bltx == nil:
+			txs, ltx = plainTxs, pltx
+		default:
+			if ptip.Lt(btip) {
+				txs, ltx = blobTxs, bltx
+			} else {
+				txs, ltx = plainTxs, pltx
+			}
+		}
+
 		if ltx == nil {
 			break
 		}
@@ -1042,11 +1062,11 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	if env.header.ExcessBlobGas != nil {
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
 	}
-	//filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
-	//pendingPlainTxs := w.eth.TxPool().Pending(filter)
-	//
-	//filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
-	//pendingBlobTxs := w.eth.TxPool().Pending(filter)
+	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
+	pendingPlainTxs := w.eth.TxPool().Pending(filter)
+
+	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
+	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
 	// Split the pending transactions into locals and remotes.
 	//localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
@@ -1079,7 +1099,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	//		return err
 	//	}
 
-	if err := w.commitTransactions(env, pending, interrupt, tip); err != nil {
+	if err := w.commitTransactions(env, pendingPlainTxs, pendingBlobTxs, interrupt); err != nil {
 		return err
 	}
 	return nil

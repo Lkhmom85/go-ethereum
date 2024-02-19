@@ -1468,7 +1468,6 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 
 	var (
 		baseFee = new(uint256.Int)
-		minTip  = new(uint256.Int)
 		heads   = make(txpool.FeeList, 0, len(p.index))
 		tails   = make(map[common.Address][]*txpool.LazyTransaction, len(p.index))
 	)

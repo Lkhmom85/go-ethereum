@@ -75,6 +75,24 @@ func (f *FeeList) Pop() any {
 	return x
 }
 
+type Pending interface {
+	// Shift replaces the current best head with the next one from the same account.
+	Shift()
+	// Peek returns the next transaction by price.
+	Peek() (*LazyTransaction, *uint256.Int)
+
+	// Pop removes the best transaction, *not* replacing it with the next one from
+	// the same account. This should be used when a transaction cannot be executed
+	// and hence all subsequent ones should be discarded from the same account.
+	Pop()
+
+	// Empty returns true if the set is empty.
+	Empty() bool
+
+	// Clears the set
+	Clear()
+}
+
 type pendingSet struct {
 	Tails map[common.Address][]*LazyTransaction // Per account nonce-sorted list of transactions
 	Heads FeeList                               // Next transaction for each unique account (price heap)
@@ -116,82 +134,15 @@ func (ps *pendingSet) Clear() {
 	ps.Tails = nil
 }
 
+func (ps *pendingSet) Empty() bool {
+	return len(ps.Heads) != 0
+}
+
 // Pop removes the best transaction, *not* replacing it with the next one from
 // the same account. This should be used when a transaction cannot be executed
 // and hence all subsequent ones should be discarded from the same account.
 func (ps *pendingSet) Pop() {
 	heap.Pop(&ps.Heads)
-}
-
-type Pending interface {
-	// Shift replaces the current best head with the next one from the same account.
-	Shift()
-	// Peek returns the next transaction by price.
-	Peek() (*LazyTransaction, *uint256.Int)
-
-	// Pop removes the best transaction, *not* replacing it with the next one from
-	// the same account. This should be used when a transaction cannot be executed
-	// and hence all subsequent ones should be discarded from the same account.
-	Pop()
-	Clear() // Clears the set
-}
-
-type pendingSuperSet struct {
-	blob   Pending
-	legacy Pending
-	best   Pending
-}
-
-// Shift replaces the current best head with the next one from the same account.
-func (sets *pendingSuperSet) Shift() {
-	sets.best.Shift()
-	// see which is best
-	_, a := sets.legacy.Peek()
-	_, b := sets.blob.Peek()
-	if a.Gt(b) {
-		sets.best = sets.legacy
-	} else {
-		sets.best = sets.blob
-	}
-}
-
-func (sets *pendingSuperSet) Clear() {
-	sets.blob = nil
-	sets.legacy = nil
-	sets.best = nil
-}
-
-// Peek returns the next transaction by price.
-func (sets *pendingSuperSet) Peek() (*LazyTransaction, *uint256.Int) {
-	if sets.best != nil {
-		return sets.best.Peek()
-	}
-	return nil, nil
-}
-
-// Pop removes the best transaction, *not* replacing it with the next one from
-// the same account. This should be used when a transaction cannot be executed
-// and hence all subsequent ones should be discarded from the same account.
-func (sets *pendingSuperSet) Pop() {
-	if sets.best == nil {
-		return
-	}
-	sets.best.Pop()
-	// see which is best
-	_, a := sets.legacy.Peek()
-	_, b := sets.blob.Peek()
-	if a.Gt(b) {
-		sets.best = sets.legacy
-	} else {
-		sets.best = sets.blob
-	}
-}
-
-func (sets *pendingSuperSet) DiscardAll(txtype int) {
-	if txtype == types.BlobTxType {
-		sets.blob.Clear()
-		sets.best = sets.legacy
-	}
 }
 
 // Resolve retrieves the full transaction belonging to a lazy handle if it is still
