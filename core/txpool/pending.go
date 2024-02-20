@@ -1,4 +1,4 @@
-// Copyright 2014 The go-ethereum Authors
+// Copyright 2024 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -71,7 +71,7 @@ func (f TipList) Len() int {
 }
 
 func (f TipList) Less(i, j int) bool {
-	return f[i].Tips.Lt(&f[j].Tips)
+	return f[i].Tips.Gt(&f[j].Tips)
 }
 
 func (f TipList) Swap(i, j int) {
