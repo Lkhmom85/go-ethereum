@@ -540,9 +540,6 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 	if filter.MinTip != nil {
 		minTip = filter.MinTip
 	}
-	if filter.BaseFee != nil {
-		baseFee = filter.BaseFee
-	}
 	baseFeeBig := baseFee.ToBig()
 	for addr, list := range pool.pending {
 		if filter.NoLocals && pool.locals.contains(addr) {
