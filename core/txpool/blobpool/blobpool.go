@@ -1450,11 +1450,11 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 	// If only plain transactions are requested, this pool is unsuitable as it
 	// contains none, don't even bother.
 	if filter.OnlyPlainTxs {
-		return nil
+		return txpool.EmptyPending
 	}
 	if filter.OnlyLocals {
 		// There is no notion of local accounts in the blob pool.
-		return nil
+		return txpool.EmptyPending
 	}
 	// Track the amount of time waiting to retrieve the list of pending blob txs
 	// from the pool and the amount of time actually spent on assembling the data.

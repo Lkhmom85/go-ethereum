@@ -526,7 +526,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 	// If only blob transactions are requested, this pool is unsuitable as it
 	// contains none, don't even bother.
 	if filter.OnlyBlobTxs {
-		return nil
+		return txpool.EmptyPending
 	}
 	pool.mu.Lock()
 	defer pool.mu.Unlock()

@@ -96,8 +96,12 @@ type pendingSet struct {
 	Heads TipList                               // Next transaction for each unique account (price heap)
 }
 
+var EmptyPending = NewPendingSet(nil, nil)
+
 func NewPendingSet(heads TipList, tails map[common.Address][]*LazyTransaction) *pendingSet {
-	heap.Init(&heads)
+	if len(heads) != 0 {
+		heap.Init(&heads)
+	}
 	return &pendingSet{
 		Tails: tails,
 		Heads: heads,
