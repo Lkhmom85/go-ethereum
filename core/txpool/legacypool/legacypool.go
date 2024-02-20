@@ -545,6 +545,12 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 	}
 	baseFeeBig := baseFee.ToBig()
 	for addr, list := range pool.pending {
+		if filter.NoLocals && pool.locals.contains(addr) {
+			continue
+		}
+		if filter.OnlyLocals && !pool.locals.contains(addr) {
+			continue
+		}
 		var (
 			tail  []*txpool.LazyTransaction
 			first = true
@@ -592,11 +598,20 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 // PendingHashes retrieves the hashes of all currently processable transactions.
 // The returned list is grouped by origin account and sorted by nonce
 func (pool *LegacyPool) PendingHashes(filter txpool.PendingFilter) []common.Hash {
+	if filter.OnlyBlobTxs {
+		return nil
+	}
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
 	var hashes = make([]common.Hash, 0, len(pool.pending))
-	for _, list := range pool.pending {
+	for addr, list := range pool.pending {
+		if filter.NoLocals && pool.locals.contains(addr) {
+			continue
+		}
+		if filter.OnlyLocals && !pool.locals.contains(addr) {
+			continue
+		}
 		for _, tx := range list.Flatten() {
 			hashes = append(hashes, tx.Hash())
 		}

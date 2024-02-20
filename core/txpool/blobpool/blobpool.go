@@ -1452,6 +1452,10 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 	if filter.OnlyPlainTxs {
 		return nil
 	}
+	if filter.OnlyLocals {
+		// There is no notion of local accounts in the blob pool.
+		return nil
+	}
 	// Track the amount of time waiting to retrieve the list of pending blob txs
 	// from the pool and the amount of time actually spent on assembling the data.
 	// The latter will be pretty much moot, but we've kept it to have symmetric
@@ -1529,6 +1533,9 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 // PendingHashes retrieves the hashes of all currently processable transactions.
 // The returned list is grouped by origin account and sorted by nonce
 func (p *BlobPool) PendingHashes(filter txpool.PendingFilter) []common.Hash {
+	if filter.OnlyPlainTxs || filter.OnlyLocals {
+		return nil
+	}
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 

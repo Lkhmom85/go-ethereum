@@ -185,6 +185,9 @@ type PendingFilter struct {
 
 	OnlyPlainTxs bool // Return only plain EVM transactions (peer-join announces, block space filling)
 	OnlyBlobTxs  bool // Return only blob transactions (block blob-space filling)
+
+	OnlyLocals bool // Return only txs from 'local' addresses.
+	NoLocals   bool // Remove all txs from 'local' addresses
 }
 
 // SubPool represents a specialized transaction pool that lives on its own (e.g.

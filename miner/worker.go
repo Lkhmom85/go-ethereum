@@ -1053,54 +1053,59 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	w.mu.RUnlock()
 
 	// Retrieve the pending transactions pre-filtered by the 1559/4844 dynamic fees
-	filter := txpool.PendingFilter{
-		MinTip: tip,
-	}
+	var (
+		baseFee *uint256.Int
+		blobFee *uint256.Int
+	)
 	if env.header.BaseFee != nil {
-		filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
+		baseFee = uint256.MustFromBig(env.header.BaseFee)
 	}
 	if env.header.ExcessBlobGas != nil {
-		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
+		blobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
 	}
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
-	pendingPlainTxs := w.eth.TxPool().Pending(filter)
+	localPlainTxs := w.eth.TxPool().Pending(txpool.PendingFilter{
+		MinTip:       nil, // no mintip for locals
+		BaseFee:      baseFee,
+		BlobFee:      blobFee,
+		OnlyPlainTxs: true,
+		OnlyBlobTxs:  false,
+		OnlyLocals:   true,
+	})
+	localBlobTxs := w.eth.TxPool().Pending(txpool.PendingFilter{
+		MinTip:       nil, // no mintip for locals
+		BaseFee:      baseFee,
+		BlobFee:      blobFee,
+		OnlyPlainTxs: false,
+		OnlyBlobTxs:  true,
+		OnlyLocals:   true,
+	})
 
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
-	pendingBlobTxs := w.eth.TxPool().Pending(filter)
-
-	// Split the pending transactions into locals and remotes.
-	//localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
-	//localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
-	//
-	//for _, account := range w.eth.TxPool().Locals() {
-	//	if txs := remotePlainTxs[account]; len(txs) > 0 {
-	//		delete(remotePlainTxs, account)
-	//		localPlainTxs[account] = txs
-	//	}
-	//	if txs := remoteBlobTxs[account]; len(txs) > 0 {
-	//		delete(remoteBlobTxs, account)
-	//		localBlobTxs[account] = txs
-	//	}
-	//}
-	//// Fill the block with all available pending transactions.
-	//if len(localPlainTxs) > 0 || len(localBlobTxs) > 0 {
-	//	plainTxs := newTransactionsByPriceAndNonce(env.signer, localPlainTxs, env.header.BaseFee)
-	//	blobTxs := newTransactionsByPriceAndNonce(env.signer, localBlobTxs, env.header.BaseFee)
-	//
-	//	if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt); err != nil {
-	//		return err
-	//	}
-	//}
-	//if len(remotePlainTxs) > 0 || len(remoteBlobTxs) > 0 {
-	//	plainTxs := newTransactionsByPriceAndNonce(env.signer, remotePlainTxs, env.header.BaseFee)
-	//	blobTxs := newTransactionsByPriceAndNonce(env.signer, remoteBlobTxs, env.header.BaseFee)
-	//
-	//	if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt); err != nil {
-	//		return err
-	//	}
-
-	if err := w.commitTransactions(env, pendingPlainTxs, pendingBlobTxs, interrupt); err != nil {
-		return err
+	remotePlainTxs := w.eth.TxPool().Pending(txpool.PendingFilter{
+		MinTip:       tip,
+		BaseFee:      baseFee,
+		BlobFee:      blobFee,
+		OnlyPlainTxs: true,
+		OnlyBlobTxs:  false,
+		OnlyLocals:   false,
+	})
+	remoteBlobTxs := w.eth.TxPool().Pending(txpool.PendingFilter{
+		MinTip:       tip,
+		BaseFee:      baseFee,
+		BlobFee:      blobFee,
+		OnlyPlainTxs: false,
+		OnlyBlobTxs:  true,
+		OnlyLocals:   false,
+	})
+	// Fill the block with all available pending transactions.
+	if !localPlainTxs.Empty() || !localBlobTxs.Empty() {
+		if err := w.commitTransactions(env, localPlainTxs, localBlobTxs, interrupt); err != nil {
+			return err
+		}
+	}
+	if !remotePlainTxs.Empty() || !remoteBlobTxs.Empty() {
+		if err := w.commitTransactions(env, remotePlainTxs, remoteBlobTxs, interrupt); err != nil {
+			return err
+		}
 	}
 	return nil
 }
