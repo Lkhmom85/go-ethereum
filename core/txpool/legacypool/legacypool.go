@@ -534,7 +534,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 	var (
 		baseFee = new(uint256.Int)
 		minTip  = new(uint256.Int)
-		heads   = make(txpool.FeeList, 0, len(pool.pending))
+		heads   = make(txpool.TipList, 0, len(pool.pending))
 		tails   = make(map[common.Address][]*txpool.LazyTransaction, len(pool.pending))
 	)
 	if filter.MinTip != nil {
@@ -581,9 +581,9 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 			if first {
 				first = false
 				tail = make([]*txpool.LazyTransaction, 0, len(txs)-i)
-				heads = append(heads, &txpool.TxFees{
+				heads = append(heads, &txpool.TxTips{
 					From: addr,
-					Fees: lazyTx.Fees,
+					Tips: lazyTx.Fees,
 				})
 			}
 			tail = append(tail, lazyTx)

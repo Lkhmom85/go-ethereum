@@ -17,7 +17,6 @@
 package txpool
 
 import (
-	"container/heap"
 	"math/big"
 	"time"
 
@@ -41,108 +40,6 @@ type LazyTransaction struct {
 
 	Gas     uint64 // Amount of gas required by the transaction
 	BlobGas uint64 // Amount of blob gas required by the transaction
-}
-
-type TxFees struct {
-	From common.Address // sender
-	Fees uint256.Int    // miner-fees earned by this transaction.
-}
-
-type FeeList []*TxFees
-
-func (f FeeList) Len() int {
-	return len(f)
-}
-
-func (f FeeList) Less(i, j int) bool {
-	return f[i].Fees.Lt(&f[j].Fees)
-}
-
-func (f FeeList) Swap(i, j int) {
-	f[i], f[j] = f[j], f[i]
-}
-
-func (f *FeeList) Push(x any) {
-	*f = append(*f, x.(*TxFees))
-}
-
-func (f *FeeList) Pop() any {
-	old := *f
-	n := len(old)
-	x := old[n-1]
-	old[n-1] = nil
-	*f = old[0 : n-1]
-	return x
-}
-
-type Pending interface {
-	// Shift replaces the current best head with the next one from the same account.
-	Shift()
-	// Peek returns the next transaction by price.
-	Peek() (*LazyTransaction, *uint256.Int)
-
-	// Pop removes the best transaction, *not* replacing it with the next one from
-	// the same account. This should be used when a transaction cannot be executed
-	// and hence all subsequent ones should be discarded from the same account.
-	Pop()
-
-	// Empty returns true if the set is empty.
-	Empty() bool
-
-	// Clears the set
-	Clear()
-}
-
-type pendingSet struct {
-	Tails map[common.Address][]*LazyTransaction // Per account nonce-sorted list of transactions
-	Heads FeeList                               // Next transaction for each unique account (price heap)
-}
-
-func NewPendingSet(heads FeeList, tails map[common.Address][]*LazyTransaction) *pendingSet {
-	heap.Init(&heads)
-	return &pendingSet{
-		Tails: tails,
-		Heads: heads,
-	}
-}
-
-// Shift replaces the current best head with the next one from the same account.
-func (ps *pendingSet) Shift() {
-	acc := ps.Heads[0].From
-	if txs, ok := ps.Tails[acc]; ok && len(txs) > 1 {
-		ps.Heads[0].Fees = txs[1].Fees
-		ps.Tails[acc] = txs[1:]
-		heap.Fix(&ps.Heads, 0)
-		return
-	}
-	heap.Pop(&ps.Heads)
-}
-
-// Peek returns the next transaction by price.
-func (ps *pendingSet) Peek() (*LazyTransaction, *uint256.Int) {
-	if len(ps.Heads) == 0 {
-		return nil, nil
-	}
-	sender := ps.Heads[0].From
-	fees := ps.Heads[0].Fees
-	tx := ps.Tails[sender][0]
-	return tx, &fees
-}
-
-func (ps *pendingSet) Clear() {
-	ps.Heads = nil
-	ps.Tails = nil
-}
-
-func (ps *pendingSet) Empty() bool {
-	return len(ps.Heads) != 0
-}
-
-// Pop removes the best transaction, *not* replacing it with the next one from
-// the same account. This should be used when a transaction cannot be executed
-// and hence all subsequent ones should be discarded from the same account.
-func (ps *pendingSet) Pop() {
-	heap.Pop(&ps.Heads)
 }
 
 // Resolve retrieves the full transaction belonging to a lazy handle if it is still
@@ -171,24 +68,6 @@ type LazyResolver interface {
 // AddressReserver is passed by the main transaction pool to subpools, so they
 // may request (and relinquish) exclusive access to certain addresses.
 type AddressReserver func(addr common.Address, reserve bool) error
-
-// PendingFilter is a collection of filter rules to allow retrieving a subset
-// of transactions for announcement or mining.
-//
-// Note, the entries here are not arbitrary useful filters, rather each one has
-// a very specific call site in mind and each one can be evaluated very cheaply
-// by the pool implementations. Only add new ones that satisfy those constraints.
-type PendingFilter struct {
-	MinTip  *uint256.Int // Minimum miner tip required to include a transaction
-	BaseFee *uint256.Int // Minimum 1559 basefee needed to include a transaction
-	BlobFee *uint256.Int // Minimum 4844 blobfee needed to include a blob transaction
-
-	OnlyPlainTxs bool // Return only plain EVM transactions (peer-join announces, block space filling)
-	OnlyBlobTxs  bool // Return only blob transactions (block blob-space filling)
-
-	OnlyLocals bool // Return only txs from 'local' addresses.
-	NoLocals   bool // Remove all txs from 'local' addresses
-}
 
 // SubPool represents a specialized transaction pool that lives on its own (e.g.
 // blob pool). Since independent of how many specialized pools we have, they do

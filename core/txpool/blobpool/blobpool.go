@@ -1472,7 +1472,7 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 
 	var (
 		baseFee = new(uint256.Int)
-		heads   = make(txpool.FeeList, 0, len(p.index))
+		heads   = make(txpool.TipList, 0, len(p.index))
 		tails   = make(map[common.Address][]*txpool.LazyTransaction, len(p.index))
 	)
 	if filter.BaseFee != nil {
@@ -1516,9 +1516,9 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 			if first {
 				first = false
 				tail = make([]*txpool.LazyTransaction, 0, len(txs)-i)
-				heads = append(heads, &txpool.TxFees{
+				heads = append(heads, &txpool.TxTips{
 					From: addr,
-					Fees: lazyTx.Fees,
+					Tips: lazyTx.Fees,
 				})
 			}
 			tail = append(tail, lazyTx)

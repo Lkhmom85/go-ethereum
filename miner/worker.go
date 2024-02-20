@@ -549,7 +549,7 @@ func (w *worker) mainLoop() {
 					continue
 				}
 				txs := make(map[common.Address][]*txpool.LazyTransaction, len(ev.Txs))
-				var heads txpool.FeeList
+				var heads txpool.TipList
 				var baseFee *uint256.Int
 				// TODO check if needs mutex?
 				if w.current.header != nil && w.current.header.BaseFee != nil {
@@ -582,9 +582,9 @@ func (w *worker) mainLoop() {
 								fees = tipCap
 							}
 						}
-						heads = append(heads, &txpool.TxFees{
+						heads = append(heads, &txpool.TxTips{
 							From: acc,
-							Fees: *fees,
+							Tips: *fees,
 						})
 					}
 					txs[acc] = append(txs[acc], lazyTx)
