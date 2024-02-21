@@ -74,6 +74,9 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+replace github.com/crate-crypto/go-kzg-4844 => /home/user/go/src/github.com/crate-crypto/go-kzg-4844
+replace github.com/ethereum/c-kzg-4844 => /home/user/go/src/github.com/ethereum/c-kzg-4844
+
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.3.0 // indirect
