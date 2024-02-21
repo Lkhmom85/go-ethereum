@@ -137,7 +137,7 @@ func (ps *pendingSet) Clear() {
 }
 
 func (ps *pendingSet) Empty() bool {
-	return len(ps.Heads) != 0
+	return len(ps.Heads) == 0
 }
 
 // Pop removes the best transaction, *not* replacing it with the next one from

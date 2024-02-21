@@ -73,6 +73,9 @@ func TestPendingSortAndShift(t *testing.T) {
 		haveCount     = 0
 		prevFee       = uint64(math.MaxInt64)
 	)
+	if txset.Empty() {
+		t.Fatalf("expected non-empty")
+	}
 	for {
 		ltx, fee := txset.Peek()
 		if ltx == nil {
