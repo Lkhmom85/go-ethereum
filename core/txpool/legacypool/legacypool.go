@@ -581,6 +581,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 				heads = append(heads, &txpool.TxTips{
 					From: addr,
 					Tips: lazyTx.Fees,
+					Time: lazyTx.Time.UnixNano(),
 				})
 			}
 			tail = append(tail, lazyTx)

@@ -17,6 +17,7 @@
 package txpool
 
 import (
+	"container/heap"
 	"math/rand"
 	"testing"
 
@@ -48,6 +49,7 @@ func initLists() (heads TipList, tails map[common.Address][]*LazyTransaction) {
 				heads = append(heads, &TxTips{
 					From: addr,
 					Tips: lazyTx.Fees,
+					Time: 0,
 				})
 			}
 			tail = append(tail, lazyTx)
@@ -126,17 +128,24 @@ func TestPendingSortAndPop(t *testing.T) {
 // Tests that if multiple transactions have the same price, the ones seen earlier
 // are prioritized to avoid network spam attacks aiming for a specific ordering.
 func TestSortingByTime(t *testing.T) {
-	t.Skip("The TipList does not take time into account. Should it? ")
-	//var heads TipList
-	//for i := 0; i < 25; i++ {
-	//	addr := common.Address{byte(i)}
-	//	heads = append(heads, &TxTips{
-	//		From: addr,
-	//		Tips: uint256.NewInt(uint64(100)),
-	//	})
-	//}
-	//// un-sort the heads
-	//rand.Shuffle(len(heads), func(i, j int) {
-	//	heads[i], heads[j] = heads[j], heads[i]
-	//})
+	var heads TipList
+	for i := 0; i < 25; i++ {
+		addr := common.Address{byte(i)}
+		heads = append(heads, &TxTips{
+			From: addr,
+			Tips: *(uint256.NewInt(uint64(100))),
+			Time: int64(i),
+		})
+	}
+	// un-sort the heads
+	rand.Shuffle(len(heads), func(i, j int) {
+		heads[i], heads[j] = heads[j], heads[i]
+	})
+	heap.Init(&heads)
+	for want := int64(0); want < 25; want++ {
+		obj := heap.Pop(&heads).(*TxTips)
+		if have := obj.Time; have != want {
+			t.Fatalf("have %d want %d", have, want)
+		}
+	}
 }

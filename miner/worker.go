@@ -585,6 +585,7 @@ func (w *worker) mainLoop() {
 						heads = append(heads, &txpool.TxTips{
 							From: acc,
 							Tips: *fees,
+							Time: lazyTx.Time.UnixNano(),
 						})
 					}
 					txs[acc] = append(txs[acc], lazyTx)

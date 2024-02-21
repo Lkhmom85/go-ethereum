@@ -137,6 +137,7 @@ func (p *testTxPool) Pending(filter txpool.PendingFilter) txpool.Pending {
 				heads = append(heads, &txpool.TxTips{
 					From: addr,
 					Tips: *tip,
+					Time: ltx.Time.UnixNano(),
 				})
 			}
 		}

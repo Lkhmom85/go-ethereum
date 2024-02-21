@@ -62,6 +62,7 @@ type PendingFilter struct {
 type TxTips struct {
 	From common.Address // sender
 	Tips uint256.Int    // miner-fees earned by this transaction.
+	Time int64          // Time when the transaction was first seen
 }
 
 type TipList []*TxTips
@@ -71,7 +72,12 @@ func (f TipList) Len() int {
 }
 
 func (f TipList) Less(i, j int) bool {
-	return f[i].Tips.Gt(&f[j].Tips)
+
+	cmp := f[i].Tips.Cmp(&f[j].Tips)
+	if cmp == 0 {
+		return f[i].Time < f[j].Time
+	}
+	return cmp > 0
 }
 
 func (f TipList) Swap(i, j int) {
@@ -113,6 +119,7 @@ func (ps *pendingSet) Shift() {
 	acc := ps.Heads[0].From
 	if txs, ok := ps.Tails[acc]; ok && len(txs) > 1 {
 		ps.Heads[0].Tips = txs[1].Fees
+		ps.Heads[0].Time = txs[1].Time.UnixNano()
 		ps.Tails[acc] = txs[1:]
 		heap.Fix(&ps.Heads, 0)
 		return
